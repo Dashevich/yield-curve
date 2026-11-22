@@ -1,0 +1,24 @@
+# Сырые данные Мосбиржи — восстанавливаются: python download_data.py
+data/raw/
+*.part
+
+# Промежуточные результаты — восстанавливаются: python run_analysis.py
+# (summary.md и графики fig_*.png остаются в репозитории)
+results/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Локальные настройки Claude Code и редакторов
+.claude/settings.local.json
+.vscode/
+.idea/
+
+# ОС
+Thumbs.db
+desktop.ini
+.DS_Store
