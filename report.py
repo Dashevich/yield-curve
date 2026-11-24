@@ -15,10 +15,12 @@ import curves as C
 from run_analysis import GRID, OUT, PERIODS
 
 NAMES = {"bootstrap": "Бутстрэп (все выпуски)", "bootstrap_1y": "Бутстрэп (1 выпуск/год)",
-         "ns": "Нельсон–Сигель", "svensson": "Свенссон", "kbd": "КБД Мосбиржи"}
-COLORS = {"bootstrap": "#B4501F", "bootstrap_1y": "#E07A45", "ns": "#2A6F97",
-          "svensson": "#14213D", "kbd": "#7A8B99"}
+         "ns": "Нельсон–Сигель", "ns_robust": "Нельсон–Сигель (робастный)", "svensson": "Свенссон",
+         "spline": "Сглаживающий сплайн", "kbd": "КБД Мосбиржи"}
+COLORS = {"bootstrap": "#B4501F", "bootstrap_1y": "#E07A45", "ns": "#2A6F97", "ns_robust": "#7FB3D5",
+          "svensson": "#14213D", "spline": "#4E9A5B", "kbd": "#7A8B99"}
 ORDER = list(NAMES)
+OWN = ORDER[:-1]  # собственные методы (без КБД)
 
 
 def period_of(d):
@@ -60,10 +62,15 @@ def per_period(df, value, methods, agg="mean"):
 
 def main():
     daily, curves, errs, loo, drop = (rd(n) for n in ("daily_fit", "curves", "bond_errors", "loo_errors", "sparsity"))
+    drop = drop[drop.every10]  # тест разреженности — только регулярная выборка дней
     out = ["# Результаты: восстановление кривой ОФЗ-ПД, 2024-01 — 2026-10", "",
            f"Торговых дней: {len(daily)}; выпусков в день: {daily.n_bonds.min()}–{daily.n_bonds.max()} "
            f"(медиана {daily.n_bonds.median():.0f}); самый длинный выпуск: до {daily.max_mat.max():.1f} лет.",
            "Ставки — годовые эффективные, %; ошибки — в доходности, б.п.", "",
+           "Цены: средневзвешенная, если она внутри дневного диапазона [LOW, HIGH], иначе цена закрытия "
+           "(в 90 строках из 22 355 WAPRICE выходила за диапазон — внесистемные сделки; самые грубые — "
+           "24.07.2026, 10–11.09.2026, 16.10.2026, до +7 п. цены). Проверка вне выборки — на каждом 10-м дне, "
+           "а в период стресса — на каждом дне (отдельная таблица 1d).", "",
            "Калибровка NS/Свенссона с ограничениями (см. curves.Parametric): τ1 ≥ 0,25 г., у Свенссона τ2 ≥ τ1 + 1 г., "
            "|β2|,|β3| ≤ 30 п.п., мгновенная ставка в нуле — в полосе ±200 б.п. от доходности самого короткого выпуска. "
            "Без них Свенссон вырождался (τ1 → 0, всплеск короткой ставки до ~50%; β2 и β3 на границах с разными знаками). "
@@ -79,15 +86,28 @@ def main():
             "Бутстрэп по всем выпускам проходит через каждую цену, поэтому его ошибка в выборке ≈ 0 — "
             "сравнивать его честно можно только вне выборки (1b).", "",
             md(per_period(long, "rmse", ORDER)), ""]
+    loo_all = loo
+    loo = loo[loo.every10].copy()  # регулярная выборка — сопоставима между периодами
     loo["abs"] = loo.err_bp.abs()
     lt = loo.groupby(["period", "method"]).err_bp.apply(lambda e: np.sqrt(np.mean(e ** 2))).reset_index()
     out += ["### 1b. RMSE вне выборки (leave-one-out, каждый 10-й день), б.п.", "",
             "Каждую облигацию оцениваем по кривой, построенной без неё.", "",
-            md(per_period(lt, "err_bp", ORDER[:4])), ""]
+            md(per_period(lt, "err_bp", OWN)), ""]
     loo["bucket"] = pd.cut(loo.maturity, [0, 3, 7, 12, 30], labels=["до 3 лет", "3–7 лет", "7–12 лет", "больше 12 лет"])
     bt = loo.groupby(["bucket", "method"], observed=True).err_bp.apply(lambda e: np.sqrt(np.mean(e ** 2))).unstack()
-    bt = bt[ORDER[:4]]; bt.columns = [NAMES[m] for m in bt.columns]; bt.index.name = "Срок"
+    bt = bt[OWN]; bt.columns = [NAMES[m] for m in bt.columns]; bt.index.name = "Срок"
     out += ["### 1c. RMSE вне выборки по срокам, б.п.", "", md(bt), ""]
+    st = loo_all[loo_all.period == "Лето 2026: стресс"].copy()
+    rm = lambda e: np.sqrt(np.mean(e ** 2))
+    st["bucket"] = pd.cut(st.maturity, [0, 3, 7, 12, 30], labels=["до 3 лет", "3–7 лет", "7–12 лет", "больше 12 лет"])
+    tb = st.groupby(["bucket", "method"], observed=True).err_bp.apply(rm).unstack()[OWN]
+    tb.loc["все сроки"] = st.groupby("method").err_bp.apply(rm)[OWN]
+    days = st.groupby(["date", "method"]).err_bp.apply(rm).unstack()[OWN]
+    wins = days.idxmin(axis=1).value_counts().reindex(OWN).fillna(0).astype(int)
+    tb.loc["дней, где метод лучший"] = wins.astype(float)
+    tb.columns = [NAMES[m] for m in tb.columns]; tb.index.name = "Срок"
+    out += [f"### 1d. Стресс лета 2026: leave-one-out на каждом дне ({st.date.nunique()} дней), б.п.", "",
+            md(tb), ""]
 
     # ---- 2. Длинный конец
     c = curves.sort_values("date")
@@ -125,8 +145,8 @@ def main():
             "ошибка — RMSE на убранных выпусках.", ""]
     for share in sorted(drop.share.unique()):
         d = drop[drop.share == share]
-        t1 = per_period(d, "curve_shift_bp", ORDER[:4], "median")
-        t2 = per_period(d, "oos_rmse_bp", ORDER[:4], "median")
+        t1 = per_period(d, "curve_shift_bp", OWN, "median")
+        t2 = per_period(d, "oos_rmse_bp", OWN, "median")
         out += [f"### Убрано {share:.0%}: сдвиг кривой (медиана), б.п.", "", md(t1), "",
                 f"### Убрано {share:.0%}: ошибка на убранных выпусках (медиана), б.п.", "", md(t2), ""]
 
@@ -198,7 +218,7 @@ def plots(daily, curves, loo, drop, fc):
     loo["month"] = loo.date.dt.to_period("M").dt.to_timestamp()
     m = loo.groupby(["month", "method"]).err_bp.apply(lambda e: np.sqrt(np.mean(e ** 2))).unstack()
     fig, ax = plt.subplots(figsize=(12, 4.2))
-    for meth in ["bootstrap", "bootstrap_1y", "ns", "svensson"]:
+    for meth in OWN:
         ax.plot(m.index, m[meth], marker="o", ms=3, color=COLORS[meth], label=NAMES[meth])
     ax.axvspan(pd.Timestamp("2026-06-15"), pd.Timestamp("2026-08-15"), color="#E07A45", alpha=0.12)
     ax.set_yscale("log"); ax.set_ylabel("RMSE вне выборки, б.п. (лог)"); ax.legend(fontsize=8)
@@ -219,13 +239,13 @@ def plots(daily, curves, loo, drop, fc):
     fig.tight_layout(); fig.savefig(os.path.join(OUT, "fig_bootstrap_forwards.png"), dpi=150); plt.close(fig)
 
     # Разреженность
-    fig, ax = plt.subplots(figsize=(8, 4.2))
-    meths = ["bootstrap", "bootstrap_1y", "ns", "svensson"]
+    fig, ax = plt.subplots(figsize=(11, 4.6))
+    meths = OWN
     x = np.arange(len(meths)); w = 0.38
     for j, share in enumerate(sorted(drop.share.unique())):
         v = [drop[(drop.share == share) & (drop.method == mm)].curve_shift_bp.median() for mm in meths]
         ax.bar(x + (j - 0.5) * w, v, w, label=f"убрано {share:.0%}", color=["#C9CFDA", "#14213D"][j])
-    ax.set_xticks(x, [NAMES[mm] for mm in meths], fontsize=8); ax.set_ylabel("Сдвиг кривой 1–15 лет, б.п. (медиана)")
+    ax.set_xticks(x, [NAMES[mm].replace(" (", "\n(") for mm in meths], fontsize=8); ax.set_ylabel("Сдвиг кривой 1–15 лет, б.п. (медиана)")
     ax.set_title("Устойчивость к нехватке выпусков"); ax.legend()
     fig.tight_layout(); fig.savefig(os.path.join(OUT, "fig_sparsity.png"), dpi=150); plt.close(fig)
 

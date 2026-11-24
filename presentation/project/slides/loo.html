@@ -1,0 +1,23 @@
+<section id="loo" class="alt">
+<div class="head">
+<p class="eyebrow">Результаты · точность вне выборки</p>
+<h2>Робастный Нельсон–Сигель точнее всех за весь период</h2>
+</div>
+<table class="t">
+<tr class="th"><th style="width:27%">Период</th><th style="text-align:right">Бутстрэп, все</th><th style="text-align:right">Бутстрэп, 1/год</th><th style="text-align:right">Н–С</th><th style="text-align:right">Н–С робаст.</th><th style="text-align:right">Свенссон</th><th style="text-align:right">Сплайн</th></tr>
+<tr><td>2024 H1: высокие ставки</td><td style="text-align:right">23,6</td><td style="text-align:right;color:#B4501F">22,5</td><td style="text-align:right">25,5</td><td style="text-align:right">26,2</td><td style="text-align:right">27,6</td><td style="text-align:right">23,1</td></tr>
+<tr><td>2024 H2 – 2025 H1: инверсия</td><td style="text-align:right">56,1</td><td style="text-align:right">58,7</td><td style="text-align:right">42,1</td><td style="text-align:right;color:#B4501F">40,5</td><td style="text-align:right">43,4</td><td style="text-align:right">47,9</td></tr>
+<tr><td>2025 H2 – 2026 H1: смягчение</td><td style="text-align:right">32,6</td><td style="text-align:right">30,7</td><td style="text-align:right">28,4</td><td style="text-align:right;color:#B4501F">27,1</td><td style="text-align:right">30,3</td><td style="text-align:right">30,2</td></tr>
+<tr><td>Лето 2026: стресс</td><td style="text-align:right">16,0</td><td style="text-align:right">16,8</td><td style="text-align:right">13,8</td><td style="text-align:right">13,7</td><td style="text-align:right">14,4</td><td style="text-align:right;color:#B4501F">13,2</td></tr>
+<tr><td>Осень 2026</td><td style="text-align:right">28,8</td><td style="text-align:right">33,0</td><td style="text-align:right;color:#B4501F">26,9</td><td style="text-align:right">27,8</td><td style="text-align:right">30,7</td><td style="text-align:right">29,3</td></tr>
+<tr class="hl"><td>Весь период</td><td style="text-align:right">39,7</td><td style="text-align:right">40,5</td><td style="text-align:right">32,3</td><td style="text-align:right;color:#B4501F">31,4</td><td style="text-align:right">34,1</td><td style="text-align:right">35,2</td></tr>
+</table>
+<p class="note">RMSE, б.п., leave-one-out на каждом 10-м дне (73 дня), очищенные цены. Оранжевым — лучший в строке.</p>
+<aside>Главная таблица — точность вне выборки, уже на очищенных данных. Каждое число — среднеквадратичная ошибка в доходности в базисных пунктах, когда облигацию угадывают по кривой, построенной без неё. Оранжевым выделен лучший метод в каждой строке.
+
+За весь период лучший — робастный Нельсон–Сигель, 31,4 базисного пункта. Обычный Нельсон–Сигель почти такой же — 32,3. Свенссон и сплайн — 34–35, бутстрэп — около 40.
+
+По периодам картина разная. В спокойном начале 2024 года лучше всех бутстрэп по одному выпуску на год и сплайн — кривая там простая, и гибкость не вредит. В инверсию и смягчение выигрывает робастный Нельсон–Сигель, причём в инверсию с большим отрывом от бутстрэпа — 40 против 56. В стресс все гладкие методы почти одинаковы, 13–14 базисных пунктов.
+
+Важно: самые гибкие методы — Свенссон и сплайн — Нельсона–Сигеля в среднем не обгоняют. Лишняя гибкость вне выборки не помогает.</aside>
+</section>

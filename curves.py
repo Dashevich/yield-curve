@@ -129,15 +129,30 @@ def ytm_cont(t, cf, price):
     return brentq(f, -0.5, 2.0)
 
 
+def _clean_price(r):
+    """Средневзвешенная цена, если она внутри дневного диапазона [LOW, HIGH], иначе цена закрытия.
+
+    WAPRICE иногда выходит за диапазон стакана — в неё попадают внесистемные сделки
+    по нерыночной цене (напр. 24.07.2026 SU26212: WAPRICE 97,49 при HIGH 91,39).
+    Такие цены дают выбросы доходности в сотни б.п. и портят кривую на коротком конце.
+    """
+    wap, lo, hi = r.WAPRICE, r.LOW, r.HIGH
+    if pd.isna(wap):
+        return r.CLOSE
+    if pd.notna(lo) and pd.notna(hi) and not (lo <= wap <= hi) and pd.notna(r.CLOSE):
+        return r.CLOSE
+    return wap
+
+
 def market_on(h_day, cashflows, settle, min_trades=5, min_years=0.25):
     """Список облигаций дня с ценами и потоками после даты расчётов.
 
-    Фильтры: есть цена (средневзвешенная или закрытия), >= min_trades сделок,
+    Фильтры: есть цена (средневзвешенная в пределах дня, иначе закрытия), >= min_trades сделок,
     срок до погашения >= min_years (короткие выпуски шумные из-за НКД и ликвидности).
     """
     bonds = []
     for r in h_day.itertuples():
-        price = r.WAPRICE if pd.notna(r.WAPRICE) else r.CLOSE
+        price = _clean_price(r)
         if pd.isna(price) or pd.isna(r.ACCINT) or (r.NUMTRADES or 0) < min_trades:
             continue
         cf = cashflows[r.SECID]
@@ -272,8 +287,11 @@ class Parametric:
 
     SHORT_BAND = 0.02
     SHORT_W = 1.0
+    HUBER_BP = 15.0  # порог функции Хьюбера для робастного варианта, б.п.
 
-    def __init__(self, bonds, kind="ns", x0=None, only_x0=False):
+    def __init__(self, bonds, kind="ns", x0=None, only_x0=False, robust=False):
+        """robust=True — функция потерь Хьюбера: ошибки больше HUBER_BP штрафуются линейно,
+        а не квадратично, поэтому одна аномальная цена не тянет за собой всю кривую."""
         self.kind = kind
         self.fn = ns_zero if kind == "ns" else sv_zero
         self.fwd_fn = ns_forward if kind == "ns" else sv_forward
@@ -313,7 +331,8 @@ class Parametric:
         for s in starts:
             s = np.clip(s, np.array(lo) + 1e-6, np.array(hi) - 1e-6)
             try:
-                r = least_squares(resid, s, bounds=(lo, hi), method="trf", max_nfev=400)
+                r = least_squares(resid, s, bounds=(lo, hi), method="trf", max_nfev=400,
+                                  loss="huber" if robust else "linear", f_scale=self.HUBER_BP)
             except Exception:
                 continue
             if best is None or r.cost < best.cost:
@@ -328,12 +347,99 @@ class Parametric:
         return self.fwd_fn(self.params, t)
 
 
+# ---------------------------------------------------------------- сглаживающий сплайн (VRP)
+class Spline:
+    """Сглаживающий сплайн форвардной кривой с переменным штрафом (VRP: Waggoner 1997,
+    Anderson & Sleath 2001 — метод Банка Англии).
+
+    Мгновенный форвард f(t) — кубический B-сплайн с фиксированными узлами KNOTS;
+    z(t)·t = ∫₀ᵗ f — линейна по коэффициентам. Минимизируем
+        Σ (ошибка цены / (цена × дюрация))²  +  ∫ λ(t) f''(t)² dt,
+        log λ(t) = L − (L − S)·exp(−t / MU).
+    Штраф на кривизну мал на коротком конце (форма кривой может быстро меняться —
+    как в стресс) и велик на длинном (там мало выпусков, «пилы» бутстрэпа нет).
+    L, S подобраны по leave-one-out на 2024 H1 (до периода стресса), см. tune_spline.py.
+    Лучшим оказался постоянный штраф L = S = −5 (т.е. вариант Fisher–Nychka–Zervos);
+    варианты с меньшим штрафом на коротком конце хуже на 0,5–1 б.п.
+    За самым длинным выпуском форвард постоянен (без экстраполяции наклона).
+    """
+
+    KNOTS = np.array([0, 0.25, 0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30], float)
+    L, S, MU = -5.0, -5.0, 1.0
+    _cache = {}
+
+    @classmethod
+    def _basis(cls, tmax):
+        """B-сплайны на узлах до самого длинного выпуска; дальше форвард постоянен."""
+        from scipy.interpolate import BSpline
+        kn = np.r_[cls.KNOTS[cls.KNOTS < tmax - 0.5], tmax]
+        key = tuple(np.round(kn, 6))
+        if key not in cls._cache:
+            tk = np.r_[[kn[0]] * 3, kn, [kn[-1]] * 3]
+            K = len(tk) - 4
+            B = BSpline(tk, np.eye(K), 3, extrapolate=False)
+            if len(cls._cache) > 2000:
+                cls._cache.clear()
+            cls._cache[key] = (B, B.antiderivative(), B.derivative(2))
+        return cls._cache[key]
+
+    def _A(self, t):
+        """∫₀ᵗ B_k с плоским форвардом после tmax."""
+        tc = np.minimum(t, self.tmax)
+        out = self.A(tc) - self.A0
+        return out + (t - tc)[:, None] * self.Bend[None, :]
+
+    def __init__(self, bonds, x0=None, L=None, S=None, mu=None):
+        L = self.L if L is None else L
+        S = self.S if S is None else S
+        mu = self.MU if mu is None else mu
+        self.tmax = bonds[-1].maturity
+        B, A, B2 = self._basis(self.tmax)
+        self.B, self.A = B, A
+        self.A0 = A(0.0)
+        self.Bend = B(self.tmax - 1e-9)
+        M = [self._A(b.t) for b in bonds]                      # ∫₀ᵗ B_k по каждому потоку
+        CF = [b.cf for b in bonds]
+        P = np.array([b.dirty for b in bonds])
+        W = 1e4 / (P * np.array([b.dur for b in bonds]))
+        g = np.linspace(0, self.tmax - 1e-9, 121)
+        lam = np.exp(L - (L - S) * np.exp(-g / mu))
+        Pen = B2(g) * np.sqrt(lam * (g[1] - g[0]))[:, None] * 1e4  # штраф — тоже в «б.п.»
+
+        def resid(c):
+            model = np.array([np.sum(cf * np.exp(-m @ c)) for m, cf in zip(M, CF)])
+            return np.r_[(model - P) * W, Pen @ c]
+
+        def jac(c):
+            J = np.array([-(cf * np.exp(-m @ c)) @ m for m, cf in zip(M, CF)]) * W[:, None]
+            return np.vstack([J, Pen])
+
+        K = B.c.shape[0]
+        c0 = np.full(K, np.mean([b.ytm for b in bonds]))
+        if x0 is not None and len(x0) == K:  # тёплый старт, если набор узлов тот же
+            c0 = np.asarray(x0, float)
+        r = least_squares(resid, c0, jac=jac, method="lm", max_nfev=200)
+        self.params = r.x
+        self.cost = r.cost
+
+    def zero(self, t):
+        t = np.maximum(np.atleast_1d(np.asarray(t, float)), 1e-6)
+        return (self._A(t) @ self.params) / t
+
+    def forward(self, t):
+        t = np.minimum(np.atleast_1d(np.asarray(t, float)), self.tmax - 1e-9)
+        return self.B(np.maximum(t, 0.0)) @ self.params
+
+
 def fit_all(bonds, warm=None):
-    """Все три собственные кривые на один день. warm — параметры прошлого дня для старта."""
+    """Все собственные кривые на один день. warm — параметры прошлого дня для старта."""
     warm = warm or {}
+    ns = Parametric(bonds, "ns", warm.get("ns"))
     return {
         "bootstrap": Bootstrap(bonds),
         "bootstrap_1y": Bootstrap(bonds, bucket=1.0),
-        "ns": Parametric(bonds, "ns", warm.get("ns")),
+        "ns": ns,
+        "ns_robust": Parametric(bonds, "ns", ns.params, robust=True),
         "svensson": Parametric(bonds, "sv", warm.get("svensson")),
+        "spline": Spline(bonds, warm.get("spline")),
     }

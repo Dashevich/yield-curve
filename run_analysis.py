@@ -25,8 +25,9 @@ import curves as C
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 GRID = np.array([0.25, 0.5, 1, 2, 3, 5, 7, 10, 12, 15, 20])
-METHODS = ["bootstrap", "bootstrap_1y", "ns", "svensson", "kbd"]
-LOO_EVERY = 10      # leave-one-out и тест на разреженность — каждый 10-й торговый день
+METHODS = ["bootstrap", "bootstrap_1y", "ns", "ns_robust", "svensson", "spline", "kbd"]
+LOO_EVERY = 10      # leave-one-out и тест на разреженность — каждый 10-й торговый день,
+STRESS = ("2026-06-15", "2026-08-15")  # а в период стресса — каждый день
 DROP_SHARES = (0.3, 0.5)
 DROP_REPS = 10
 
@@ -81,6 +82,7 @@ def process_day(i):
     row = {"date": d, "n_bonds": len(bonds), "max_mat": bonds[-1].maturity,
            "volume_bn": sum(b.volume for b in bonds) / 1e9}
     curves_rows, err_rows = [], []
+    row["loo_day"] = bool(i % LOO_EVERY == 0)
     for m, f in fits.items():
         e = C.yield_errors(bonds, f.zero)
         row[f"rmse_{m}"] = _rmse(e)
@@ -97,17 +99,20 @@ def process_day(i):
         row["bootstrap_fwd_max"] = C.to_annual(np.max(fits["bootstrap"].fwd))
 
     loo_rows, drop_rows = [], []
-    if i % LOO_EVERY == 0:
-        warm = {"ns": fits["ns"].params, "svensson": fits["svensson"].params}
-        # --- leave-one-out: оцениваем каждую облигацию кривой, построенной без неё
-        for j, b in enumerate(bonds):
-            rest = bonds[:j] + bonds[j + 1:]
-            sub = {
+    in_stress = pd.Timestamp(STRESS[0]) <= d <= pd.Timestamp(STRESS[1])
+    if i % LOO_EVERY == 0 or in_stress:
+        def refit(rest):
+            return {
                 "bootstrap": C.Bootstrap(rest),
                 "bootstrap_1y": C.Bootstrap(rest, bucket=1.0),
-                "ns": C.Parametric(rest, "ns", warm["ns"], only_x0=True),
-                "svensson": C.Parametric(rest, "sv", warm["svensson"], only_x0=True),
+                "ns": C.Parametric(rest, "ns", fits["ns"].params, only_x0=True),
+                "ns_robust": C.Parametric(rest, "ns", fits["ns_robust"].params, only_x0=True, robust=True),
+                "svensson": C.Parametric(rest, "sv", fits["svensson"].params, only_x0=True),
+                "spline": C.Spline(rest, fits["spline"].params),
             }
+        # --- leave-one-out: оцениваем каждую облигацию кривой, построенной без неё
+        for j, b in enumerate(bonds):
+            sub = refit(bonds[:j] + bonds[j + 1:])
             for m, f in sub.items():
                 loo_rows.append({"date": d, "method": m, "secid": b.secid, "maturity": b.maturity,
                                  "err_bp": float(C.yield_errors([b], f.zero)[0])})
@@ -119,18 +124,15 @@ def process_day(i):
                 keep = np.sort(rng.choice(len(bonds), int(round(len(bonds) * (1 - share))), replace=False))
                 rest = [bonds[j] for j in keep]
                 left = [b for j, b in enumerate(bonds) if j not in set(keep)]
-                sub = {
-                    "bootstrap": C.Bootstrap(rest),
-                    "bootstrap_1y": C.Bootstrap(rest, bucket=1.0),
-                    "ns": C.Parametric(rest, "ns", warm["ns"], only_x0=True),
-                    "svensson": C.Parametric(rest, "sv", warm["svensson"], only_x0=True),
-                }
+                sub = refit(rest)
                 for m, f in sub.items():
                     shift = (f.zero(g) - fits[m].zero(g)) * 1e4
                     drop_rows.append({"date": d, "method": m, "share": share, "rep": rep,
                                       "curve_shift_bp": _rmse(shift),
                                       "shift_15y_bp": float(np.ravel(f.zero(15.0) - fits[m].zero(15.0))[0] * 1e4),
                                       "oos_rmse_bp": _rmse(C.yield_errors(left, f.zero))})
+    for r in loo_rows + drop_rows:  # True — регулярная выборка (каждый 10-й день), False — доп. дни стресса
+        r["every10"] = i % LOO_EVERY == 0
     return row, curves_rows, err_rows, loo_rows, drop_rows
 
 
