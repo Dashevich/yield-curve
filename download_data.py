@@ -8,6 +8,9 @@
   bondization/<SECID>_coupons.csv, _amortizations.csv, _offers.csv
                           — график купонов, амортизаций и оферт по выпуску
   zcyc/<дата>.json        — КБД Мосбиржи (параметры кривой) на каждый торговый день
+  rgbi.csv                — индекс гособлигаций RGBI (Мосбиржа)
+  keyrate.html, ruonia.html, calendar.html — ключевая ставка, RUONIA и даты заседаний
+                          (сайт Банка России)
 
 Нужен только Python 3.8+ — никаких дополнительных библиотек.
 Запуск:   python download_data.py
@@ -26,7 +29,8 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
 
-BASE = "https://iss.moex.com/iss/"
+# ISS_BASE=http://iss.moex.com/iss/ — если https до биржи не проходит (у ISS публичные данные, http тоже работает)
+BASE = os.environ.get("ISS_BASE", "https://iss.moex.com/iss/")
 START = "2024-01-01"
 END = "2026-10-31"
 PAUSE = 0.25  # пауза между запросами, чтобы не нагружать биржу
@@ -102,7 +106,7 @@ def days(start, end):
 
 # ---------- 1. Итоги торгов по дням ----------
 def download_history(start, end):
-    print(f"\n[1/4] Итоги торгов ОФЗ {start} — {end}")
+    print(f"\n[1/6] Итоги торгов ОФЗ {start} — {end}")
     trading_days, secids = [], set()
     all_days = list(days(start, end))
     for i, d in enumerate(all_days, 1):
@@ -128,7 +132,7 @@ def download_history(start, end):
 
 # ---------- 2. Описание выпусков ----------
 def download_securities(secids):
-    print(f"\n[2/4] Описание выпусков ({len(secids)})")
+    print(f"\n[2/6] Описание выпусков ({len(secids)})")
     for i, s in enumerate(secids, 1):
         path = os.path.join(DIRS["securities"], s + ".csv")
         if os.path.exists(path):
@@ -144,7 +148,7 @@ def download_securities(secids):
 
 # ---------- 3. Купоны, амортизации, оферты ----------
 def download_bondization(secids):
-    print(f"\n[3/4] Графики купонов ({len(secids)})")
+    print(f"\n[3/6] Графики купонов ({len(secids)})")
     for i, s in enumerate(secids, 1):
         for block in ("coupons", "amortizations", "offers"):
             path = os.path.join(DIRS["bondization"], f"{s}_{block}.csv")
@@ -162,7 +166,7 @@ def download_bondization(secids):
 
 # ---------- 4. КБД Мосбиржи ----------
 def download_zcyc(trading_days):
-    print(f"\n[4/4] КБД Мосбиржи ({len(trading_days)} дней)")
+    print(f"\n[4/6] КБД Мосбиржи ({len(trading_days)} дней)")
     for i, d in enumerate(trading_days, 1):
         path = os.path.join(DIRS["zcyc"], d + ".json")
         if os.path.exists(path):
@@ -179,6 +183,47 @@ def download_zcyc(trading_days):
             log_error(f"zcyc {d}: {e}")
 
 
+# ---------- 5. Индекс гособлигаций RGBI (для рыночного определения стресса) ----------
+def download_rgbi(start, end):
+    print("\n[5/6] Индекс RGBI")
+    path = os.path.join(ROOT, "rgbi.csv")
+    try:
+        cols, rows = fetch_block("history/engines/stock/markets/index/securities/RGBI.json",
+                                 {"from": start, "till": end}, "history")
+        write_csv(path, cols, rows)
+        print(f"  {len(rows)} дней")
+    except Exception as e:
+        log_error(f"rgbi: {e}")
+
+
+# ---------- 6. Ключевая ставка и RUONIA с сайта Банка России ----------
+CBR_PAGES = {
+    "keyrate.html": "https://www.cbr.ru/hd_base/KeyRate/",
+    "ruonia.html": "https://www.cbr.ru/hd_base/ruonia/dynamics/",
+    "calendar.html": "https://www.cbr.ru/dkp/cal_mp/",  # даты заседаний по ключевой ставке
+}
+
+
+def download_cbr(start):
+    """Сохраняем HTML-таблицы ЦБ как есть (разбор — в curves.load_cbr). Период — до сегодня:
+    ключевая ставка нужна и после конца выборки, чтобы проверять годовые прогнозы."""
+    print("\n[6/6] Ключевая ставка и RUONIA (cbr.ru)")
+    d0 = date.fromisoformat(start) - timedelta(days=60)
+    params = {"UniDbQuery.Posted": "True", "UniDbQuery.From": d0.strftime("%d.%m.%Y"),
+              "UniDbQuery.To": date.today().strftime("%d.%m.%Y")}
+    for name, url in CBR_PAGES.items():
+        try:
+            req = urllib.request.Request(url + "?" + urllib.parse.urlencode(params),
+                                         headers={"User-Agent": "Mozilla/5.0 ofz-curve-study/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                html = r.read().decode("utf-8")
+            with open(os.path.join(ROOT, name), "w", encoding="utf-8") as f:
+                f.write(html)
+            print(f"  {name}: {len(html) // 1024} КБ")
+        except Exception as e:
+            log_error(f"cbr {name}: {e}")
+
+
 def main():
     start = sys.argv[1] if len(sys.argv) > 1 else START
     end = sys.argv[2] if len(sys.argv) > 2 else END
@@ -190,6 +235,8 @@ def main():
     download_securities(secids)
     download_bondization(secids)
     download_zcyc(trading_days)
+    download_rgbi(start, end)
+    download_cbr(start)
     print(f"\nГотово за {(time.time() - t0) / 60:.1f} мин.")
     if os.path.exists(ERRLOG):
         print("Были ошибки — см. data/raw/errors.log. Просто запустите скрипт ещё раз,"
