@@ -124,13 +124,14 @@ class Doc:
     def br(self):
         self.f.append(PageBreak())
 
-    def build(self, path, footer):
+    def build(self, path, footer, title="Восстановление кривой ОФЗ — объяснение проекта"):
         def deco(c, d):
             c.saveState()
             c.setFont("Sans", 8.5); c.setFillColor(GREY)
-            c.drawString(20 * mm, 12 * mm, footer)
+            if footer:
+                c.drawString(20 * mm, 12 * mm, footer)
             c.drawRightString(A4[0] - 20 * mm, 12 * mm, str(d.page))
             c.restoreState()
         doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm, topMargin=18 * mm,
-                                bottomMargin=22 * mm, title="Восстановление кривой ОФЗ — объяснение проекта")
+                                bottomMargin=22 * mm, title=title)
         doc.build(self.f, onFirstPage=deco, onLaterPages=deco)

@@ -6,7 +6,7 @@
     индекс RGBI, ключевая ставка / RUONIA / календарь заседаний Банка России);
   * КБД Мосбиржи (G-кривая: Нельсон–Сигель + 9 гауссовых поправок);
   * бутстрэп (кусочно-постоянные форварды между погашениями);
-  * Нельсон–Сигель и Свенссон с калибровкой по ошибкам в доходности;
+  * Нельсон–Сигель и Свенссон с калибровкой по ошибкам в доходности (и робастный NS с потерями Хьюбера);
   * Нельсон–Сигель с фиксированным τ (Diebold–Li) и с «якорем» короткого конца на RUONIA;
   * сглаживающий сплайн форвардной кривой (VRP, Waggoner 1997).
 
@@ -382,9 +382,10 @@ def sv_forward(p, t):
     return b0 + b1 * np.exp(-x1) + b2 * x1 * np.exp(-x1) + b3 * x2 * np.exp(-x2)
 
 
-# τ для варианта «NS с фиксированным τ» (Diebold–Li): медиана τ свободного NS по всем дням
-# выборки 2024–2026 (пересчитывается скриптом run_analysis.py --tune и вписывается сюда).
-TAU_FIXED = 1.28
+# τ для варианта «NS с фиксированным τ» (Diebold–Li): медиана τ свободного NS по дням 2024 H1
+# (run_analysis.py --tune). Подбираем только на начале периода, чтобы не подгонять метод под данные,
+# на которых его сравниваем (по всем дням медиана была бы 1,28).
+TAU_FIXED = 2.2
 
 
 class Parametric:
@@ -406,8 +407,11 @@ class Parametric:
 
     SHORT_BAND = 0.02
     SHORT_W = 1.0
+    HUBER_BP = 15.0  # порог функции Хьюбера для робастного варианта, б.п.
 
-    def __init__(self, bonds, kind="ns", x0=None, only_x0=False, short_rate=None, short_band=None):
+    def __init__(self, bonds, kind="ns", x0=None, only_x0=False, short_rate=None, short_band=None, robust=False):
+        """robust=True — функция потерь Хьюбера: ошибки больше HUBER_BP штрафуются линейно,
+        а не квадратично, поэтому одна аномальная цена не тянет за собой всю кривую."""
         self.kind = kind
         sv = kind == "sv"
         fix = kind == "nsfix"
@@ -458,7 +462,8 @@ class Parametric:
         for s in starts:
             s = np.clip(s, lo_a + 1e-6, hi_a - 1e-6)
             try:
-                r = least_squares(resid, s, bounds=(lo, hi), method="trf", max_nfev=400)
+                r = least_squares(resid, s, bounds=(lo, hi), method="trf", max_nfev=400,
+                                  loss="huber" if robust else "linear", f_scale=self.HUBER_BP)
             except Exception:
                 continue
             if best is None or r.cost < best.cost:
@@ -486,12 +491,12 @@ class Spline:
     где λ(t) растёт со сроком: на коротком конце кривой разрешено изгибаться (там много
     информации — решения ЦБ), на длинном — почти нельзя. За последним выпуском дополнительно
     штрафуется наклон f'(t): форвард стремится к постоянному, а не уходит по прямой.
-    Масштаб штрафа LAM подобран по ошибке вне выборки (run_analysis.py --tune).
+    Масштаб штрафа LAM подобран по ошибке вне выборки на 2024 H1 (run_analysis.py --tune).
     """
 
     KNOTS = [0.25, 0.5, 1, 1.5, 2, 3, 4, 5, 7, 10, 13, 16, 20]
     T_END = 30.0
-    LAM = 0.3        # λ на участке 1–10 лет (б.п.² ошибки за (б.п./год²)²·год)
+    LAM = 1.0        # λ на участке 1–10 лет (б.п.² ошибки за (б.п./год²)²·год)
     LAM_SHORT = 0.01  # множитель λ до 1 года
     LAM_LONG = 30.0  # множитель λ после 10 лет
     LAM_FLAT = 1.0   # штраф на наклон форварда за последним выпуском
@@ -540,7 +545,7 @@ class Spline:
 
 
 # ---------------------------------------------------------------- все методы на один день
-METHODS = ["bootstrap", "bootstrap_1y", "ns", "svensson", "ns_fix", "ns_anchor", "spline"]
+METHODS = ["bootstrap", "bootstrap_1y", "ns", "ns_robust", "svensson", "ns_fix", "ns_anchor", "spline"]
 
 
 def fit_one(m, bonds, warm=None, only_warm=False, short_rate=None):
@@ -552,6 +557,8 @@ def fit_one(m, bonds, warm=None, only_warm=False, short_rate=None):
         return Bootstrap(bonds, bucket=1.0)
     if m == "ns":
         return Parametric(bonds, "ns", warm, only_warm)
+    if m == "ns_robust":
+        return Parametric(bonds, "ns", warm, only_warm, robust=True)
     if m == "svensson":
         return Parametric(bonds, "sv", warm, only_warm)
     if m == "ns_fix":

@@ -18,7 +18,7 @@
 
 Результаты: results/*.csv.
 Запуск:  python run_analysis.py            (≈10–20 мин на 8 ядрах)
-         python run_analysis.py --tune     (подбор τ для NS-fix и штрафа сплайна, ≈5 мин)
+         python run_analysis.py --tune     (подбор τ для NS-fix и штрафа сплайна на 2024 H1, ≈3 мин)
 """
 
 import os
@@ -186,7 +186,7 @@ def process_day(i):
            "volume_bn": sum(b.volume for b in bonds) / 1e9,
            "half_spread_bp": float(np.nanmedian([b.half_spread / b.dirty / b.dur * 1e4 for b in bonds])),
            "bootstrap_skipped": fits["bootstrap"].skipped}
-    for m in ("ns", "svensson", "ns_fix", "ns_anchor"):
+    for m in ("ns", "ns_robust", "svensson", "ns_fix", "ns_anchor"):
         if m in fits:
             row[f"{m}_at_bound"] = fits[m].at_bound
             row[f"{m}_short_active"] = fits[m].short_active
@@ -287,12 +287,15 @@ def _tune_day(i):
     return res
 
 
-TUNE_LAMS = (0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0)
+TUNE_LAMS = (0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0)
+
+
+TUNE_END = "2024-06-30"  # подбираем только на 2024 H1 — до основных стрессовых эпизодов и вне основной проверки
 
 
 def tune():
     _init()
-    idx = list(range(0, len(DAYS), 15))
+    idx = [i for i, d in enumerate(DAYS) if d <= pd.Timestamp(TUNE_END)][::3]
     with Pool(initializer=_init) as pool:
         r = [x for x in pool.map(_tune_day, idx) if x is not None]
     t = pd.DataFrame(r)

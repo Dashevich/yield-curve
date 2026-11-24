@@ -1,0 +1,28 @@
+<section id="sparsity" class="alt">
+<div class="head">
+<p class="eyebrow">Результаты · устойчивость</p>
+<h2>Робастный Нельсон–Сигель устойчивее всех</h2>
+</div>
+<div class="legend">
+<div class="sw" style="background:#9FB7C9"></div><p class="note">убрано 30% выпусков</p>
+<div class="sw" style="background:#14213D"></div><p class="note">убрано 50% выпусков</p>
+</div>
+<div class="bars" style="gap:16px">
+<div class="bar"><p class="name">Бутстрэп, все</p><div class="track"><div class="b30" style="width:67.4%"></div><div class="b50" style="width:100%"></div></div><p class="val">16,3 · 24,2 б.п.</p></div>
+<div class="bar"><p class="name">Бутстрэп, 1 выпуск/год</p><div class="track"><div class="b30" style="width:53.7%"></div><div class="b50" style="width:88.8%"></div></div><p class="val">13,0 · 21,5 б.п.</p></div>
+<div class="bar"><p class="name">Нельсон–Сигель</p><div class="track"><div class="b30" style="width:21.9%"></div><div class="b50" style="width:36%"></div></div><p class="val">5,3 · 8,7 б.п.</p></div>
+<div class="bar"><p class="name">Н–С робастный</p><div class="track"><div class="b30" style="width:16.5%"></div><div class="b50" style="width:29.3%"></div></div><p class="val">4,0 · 7,1 б.п.</p></div>
+<div class="bar"><p class="name">Свенссон</p><div class="track"><div class="b30" style="width:27.3%"></div><div class="b50" style="width:49.2%"></div></div><p class="val">6,6 · 11,9 б.п.</p></div>
+<div class="bar"><p class="name">Сглаживающий сплайн</p><div class="track"><div class="b30" style="width:36%"></div><div class="b50" style="width:64.5%"></div></div><p class="val">8,7 · 15,6 б.п.</p></div>
+</div>
+<p class="note">Медианный сдвиг кривой на сроках 1–15 лет, б.п.; 10 случайных выборок на каждом 10-м дне. Ошибка на убранных выпусках при 30%: от 19,9 (Н–С робастный) до 24,9 б.п. (бутстрэп).</p>
+<aside>Третий критерий — устойчивость. Мы случайно убирали 30 или 50 процентов облигаций, строили кривую заново и смотрели, насколько она сдвинулась на сроках от 1 до 15 лет. Для каждого дня повторяли это 10 раз.
+
+Светлые полосы — убрали 30 процентов, тёмные — половину.
+
+Бутстрэп по всем выпускам сдвигается сильнее всех: на 16 базисных пунктов при 30 процентах и на 24 при половине. Нельсон–Сигель — на 5 и 9, то есть примерно втрое меньше. Самый устойчивый — робастный Нельсон–Сигель: 4 и 7. Свенссон и сплайн — между ними: чем гибче метод, тем сильнее он зависит от того, какие именно облигации остались.
+
+Ошибка на убранных облигациях тоже ниже всего у робастного Нельсона–Сигеля — около 20 базисных пунктов против 25 у бутстрэпа.
+
+Вывод: при малом числе облигаций простая модель с четырьмя параметрами надёжнее всего, а робастная функция потерь делает её ещё устойчивее.</aside>
+</section>

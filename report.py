@@ -17,13 +17,14 @@ import curves as C
 from run_analysis import GRID, OUT, PERIODS, REGIMES, SYNTH, OWN, METHODS
 
 NAMES = {"bootstrap": "Бутстрэп (все выпуски)", "bootstrap_1y": "Бутстрэп (1 выпуск/год)",
-         "ns": "Нельсон–Сигель", "svensson": "Свенссон", "ns_fix": "NS с фикс. τ",
+         "ns": "Нельсон–Сигель", "ns_robust": "NS робастный (Хьюбер)", "svensson": "Свенссон", "ns_fix": "NS с фикс. τ",
          "ns_anchor": "NS + якорь RUONIA", "spline": "Сглаживающий сплайн", "kbd": "КБД Мосбиржи"}
 # категориальная палитра (dataviz reference, фиксированный порядок слотов); КБД — нейтральный серый эталон
 COLORS = {"ns": "#2a78d6", "bootstrap": "#eb6834", "spline": "#1baf7a", "svensson": "#eda100",
-          "bootstrap_1y": "#e87ba4", "ns_fix": "#008300", "ns_anchor": "#6250d6", "kbd": "#7A8B99"}
+          "bootstrap_1y": "#e87ba4", "ns_fix": "#008300", "ns_anchor": "#6250d6", "ns_robust": "#0aa4b4",
+          "kbd": "#7A8B99"}
 ORDER = METHODS
-SMOOTH = ["ns", "svensson", "ns_fix", "ns_anchor", "spline"]
+SMOOTH = ["ns", "ns_robust", "svensson", "ns_fix", "ns_anchor", "spline"]
 NUM = {}  # ключевые числа для PDF
 
 
@@ -224,7 +225,7 @@ def main():
             "сильно пересекаются, разница между ними может быть случайной.", "", md(t, "{}"), ""]
 
     # парные сравнения: разница RMSE и её интервал
-    pairs = [("ns", "bootstrap"), ("spline", "ns"), ("ns_fix", "ns"), ("ns_anchor", "ns"), ("svensson", "ns")]
+    pairs = [("ns", "bootstrap"), ("spline", "ns"), ("ns_robust", "ns"), ("ns_fix", "ns"), ("ns_anchor", "ns"), ("svensson", "ns")]
     rows = []
     for a, b in pairs:
         for r in REGIMES:
@@ -318,8 +319,8 @@ def main():
     out += [f"Наивный бутстрэп: в {bad:.0%} дней мгновенный форвард выходит за пределы [0%, 30%] "
             f"(медиана минимума {daily.bootstrap_fwd_min.median():.1f}%, максимума {daily.bootstrap_fwd_max.median():.1f}%). "
             f"В среднем бутстрэп пропускает {daily.bootstrap_skipped.mean():.1f} выпуска в день (близкие сроки или нет решения).", ""]
-    bnd = {m: (daily[f"{m}_at_bound"].astype(str) == "True").mean() for m in ("ns", "svensson", "ns_fix", "ns_anchor") if f"{m}_at_bound" in daily}
-    sh = {m: (daily[f"{m}_short_active"].astype(str) == "True").mean() for m in ("ns", "svensson", "ns_fix", "ns_anchor") if f"{m}_short_active" in daily}
+    bnd = {m: (daily[f"{m}_at_bound"].astype(str) == "True").mean() for m in ("ns", "ns_robust", "svensson", "ns_fix", "ns_anchor") if f"{m}_at_bound" in daily}
+    sh = {m: (daily[f"{m}_short_active"].astype(str) == "True").mean() for m in ("ns", "ns_robust", "svensson", "ns_fix", "ns_anchor") if f"{m}_short_active" in daily}
     NUM["at_bound"] = bnd; NUM["short_active"] = sh
     out += ["Доля дней, когда параметр упирается в границу / короткая ставка на краю полосы: " +
             "; ".join(f"{NAMES[m]} — {bnd[m]:.0%} / {sh[m]:.0%}" for m in bnd), ""]

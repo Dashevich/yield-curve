@@ -18,10 +18,10 @@ RES = os.path.join(HERE, "..", "results")
 N = json.load(open(os.path.join(RES, "numbers.json"), encoding="utf-8"))
 FIG = lambda name: os.path.join(RES, name)
 
-NM = {"bootstrap": "Бутстрэп (все выпуски)", "bootstrap_1y": "Бутстрэп (1 выпуск/год)", "ns": "Нельсон–Сигель",
+NM = {"bootstrap": "Бутстрэп (все выпуски)", "bootstrap_1y": "Бутстрэп (1 выпуск/год)", "ns": "Нельсон–Сигель", "ns_robust": "NS робастный (Хьюбер)",
       "svensson": "Свенссон", "ns_fix": "NS с фикс. τ", "ns_anchor": "NS + якорь RUONIA",
       "spline": "Сглаживающий сплайн", "kbd": "КБД Мосбиржи"}
-OWN = ["bootstrap", "bootstrap_1y", "ns", "svensson", "ns_fix", "ns_anchor", "spline"]
+OWN = ["bootstrap", "bootstrap_1y", "ns", "ns_robust", "svensson", "ns_fix", "ns_anchor", "spline"]
 REG = ["Спокойно", "Обычно", "Стресс"]
 
 

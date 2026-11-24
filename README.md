@@ -27,6 +27,8 @@ python events.py                   # заседания ЦБ и настоящи
 python download_intraday.py        # ~25 мин; 10-минутные свечи по выбранным дням (тоже через ISS_BASE)
 python intraday.py                 # ~1 мин; внутридневные кривые -> results/intraday.json
 python docs/build_explainer.py     # docs/Объяснение_проекта.pdf
+python docs/build_report.py        # docs/Предварительный_отчет.pdf (для преподавателя)
+python docs/build_report_short.py  # docs/Предварительный_отчет_кратко.pdf
 ```
 
 Итоговые таблицы — `results/summary.md`, объяснение «с нуля» — `docs/Объяснение_проекта.pdf`.

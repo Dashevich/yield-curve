@@ -1,0 +1,27 @@
+<section id="terms">
+<div class="head">
+<p class="eyebrow">Результаты · точность по срокам</p>
+<h2>Разница между методами — на длинном конце</h2>
+</div>
+<table class="t">
+<tr class="th"><th style="width:22%">Срок</th><th style="text-align:right">Бутстрэп, все</th><th style="text-align:right">Бутстрэп, 1/год</th><th style="text-align:right">Н–С</th><th style="text-align:right">Н–С робаст.</th><th style="text-align:right">Свенссон</th><th style="text-align:right">Сплайн</th></tr>
+<tr><td>до 3 лет</td><td style="text-align:right">55,4</td><td style="text-align:right">60,7</td><td style="text-align:right">51,6</td><td style="text-align:right;color:#B4501F">49,5</td><td style="text-align:right">56,6</td><td style="text-align:right">55,9</td></tr>
+<tr><td>3–7 лет</td><td style="text-align:right">19,9</td><td style="text-align:right">21,4</td><td style="text-align:right">19,4</td><td style="text-align:right;color:#B4501F">18,2</td><td style="text-align:right">19,0</td><td style="text-align:right">18,6</td></tr>
+<tr><td>7–12 лет</td><td style="text-align:right">30,2</td><td style="text-align:right">30,6</td><td style="text-align:right">23,2</td><td style="text-align:right">23,1</td><td style="text-align:right;color:#B4501F">23,0</td><td style="text-align:right">24,4</td></tr>
+<tr><td>больше 12 лет</td><td style="text-align:right">52,6</td><td style="text-align:right">47,2</td><td style="text-align:right;color:#B4501F">31,5</td><td style="text-align:right">31,8</td><td style="text-align:right">31,8</td><td style="text-align:right">38,2</td></tr>
+</table>
+<div class="row" style="gap:64px; align-items:center">
+<div style="display:flex; align-items:baseline; gap:24px"><p class="big rust">32</p><p class="biglabel" style="width:420px">б.п. после 12 лет у Н–С и Свенссона против 47–53 у бутстрэпа</p></div>
+<p class="txt" style="flex:1">На 3–7 годах все методы равны: там много выпусков. Короткий конец труден всем. Сплайн на длинном конце хуже формул: 38 б.п.</p>
+</div>
+<p class="note">RMSE вне выборки, б.п., каждый 10-й день. Оранжевым — лучший в строке.</p>
+<aside>Если разбить ту же ошибку по срокам, видно, где именно методы различаются.
+
+На сроках от 3 до 7 лет все методы одинаково хороши — 18–21 базисный пункт. Там больше всего облигаций, и любой метод справляется.
+
+Короткий конец, до 3 лет, сложен для всех — 50–60 базисных пунктов. Там ставки быстрее всего реагируют на решения Центробанка, а коротких выпусков мало. Лучше всех здесь робастный Нельсон–Сигель.
+
+Главная разница — на длинном конце. На сроках больше 12 лет ошибка бутстрэпа — 47–53 базисных пункта, а у Нельсона–Сигеля и Свенссона — около 32. Это на 33–40 процентов меньше. Сплайн здесь посередине — 38: длинных облигаций мало, и гибкой кривой не хватает опоры. На 7–12 годах та же картина: 23 против 30 у бутстрэпа.
+
+То есть преимущество формул в основном создаётся длинным концом кривой.</aside>
+</section>
